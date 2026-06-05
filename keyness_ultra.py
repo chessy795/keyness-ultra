@@ -43,6 +43,12 @@ except ImportError:
 
 from ultra_shared.stats import log_likelihood
 
+try:
+    from ultra_shared.report import ReportBuilder, THRESHOLDS
+    HAS_REPORT = True
+except ImportError:
+    HAS_REPORT = False
+
 # ─── Optional imports ─────────────────────────────────────────────────────────
 try:
     import networkx as nx
@@ -769,6 +775,50 @@ def main():
             parameters={"ref_text_col": ref_col, "sample": args.sample},
         )
         write_manifest(m, args.output)
+
+    # ── ReportBuilder: lean HTML report with grounded interpretation ──
+    if HAS_REPORT:
+        try:
+            rb = ReportBuilder(
+                "Keyness Analysis ULTRA",
+                dataset=str(args.target),
+                n_docs=len(target_texts),
+                elapsed_sec=round(time.time() - t_start, 2),
+            )
+
+            # Key findings
+            findings = []
+            if not results_df.empty:
+                n_sig = len(sig_df)
+                top_word = results_df.iloc[0]["word"]
+                top_ll = results_df.iloc[0]["log_likelihood"]
+                findings.append(f"{n_sig} significant terms (log-likelihood > 25, p_adj < 0.001)")
+                findings.append(f"Top key term: '{top_word}' (LL={top_ll:.1f})")
+                findings.append(f"Target corpus: {len(target_texts)} docs, Reference: {len(ref_texts)} docs")
+            else:
+                findings.append("No terms passed frequency threshold — try larger corpus")
+            rb.add_key_findings(findings[:5])
+
+            # Rationale
+            rb.add_rationale("Comparison", f"Target: {args.target} ({len(target_texts)} docs). Reference: {args.target} ({len(ref_texts)} docs). Min freq: 5.")
+
+            # Metrics
+            if not results_df.empty:
+                rb.add_metric("Top log-likelihood", results_df.iloc[0]["log_likelihood"],
+                              thresholds=THRESHOLDS.get("log_likelihood"))
+
+            # Table
+            if not sig_df.empty:
+                rb.add_table(sig_df.head(20), title="Top Key Terms",
+                            hover_cols={"log_likelihood": "G² statistic (higher = more distinctive)",
+                                        "log2fold": "Fold change in frequency (base 2)"})
+                rb.set_csv_data(results_df)
+
+            # Build
+            rb.build(os.path.join(args.output, "report.html"))
+            rb.build_csv(os.path.join(args.output, "raw_output.csv"))
+        except Exception as e:
+            print(f"  [!] ReportBuilder error: {e}")
 
     print(f"\n{'='*60}")
     print(f"COMPLETE ({elapsed:.1f}s)")
