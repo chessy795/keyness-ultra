@@ -41,6 +41,8 @@ try:
 except ImportError:
     HAS_SCHEMA = False
 
+from ultra_shared.stats import log_likelihood
+
 # ─── Optional imports ─────────────────────────────────────────────────────────
 try:
     import networkx as nx
@@ -111,18 +113,6 @@ def monroe_logodds(n_t, N_t, n_r, N_r, prior=0.01):
     a2 = n_r + prior
     b2 = (N_r - n_r) + prior
     return np.log2((a1 / b1) / (a2 / b2))
-
-
-def log_likelihood(a, b, c, d):
-    """Log-likelihood ratio for 2x2 table."""
-    N = a + b + c + d
-    E = [(a+b)*(a+c)/N, (a+b)*(b+d)/N, (c+d)*(a+c)/N, (c+d)*(b+d)/N]
-    obs = [a, b, c, d]
-    ll = 0
-    for o, e in zip(obs, E):
-        if o > 0 and e > 0:
-            ll += 2 * o * np.log(o / e)
-    return ll
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
