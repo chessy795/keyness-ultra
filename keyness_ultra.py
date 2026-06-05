@@ -776,9 +776,11 @@ def main():
         )
         write_manifest(m, args.output)
 
-    # ── ReportBuilder: lean HTML report with grounded interpretation ──
+    # ── ReportBuilder: comprehensive keyness analysis report ──
     if HAS_REPORT:
         try:
+            import plotly.express as px
+            import plotly.graph_objects as go
             rb = ReportBuilder(
                 "Keyness Analysis ULTRA",
                 dataset=str(args.target),
@@ -786,35 +788,67 @@ def main():
                 elapsed_sec=round(time.time() - t_start, 2),
             )
 
-            # Key findings
+            # --- KEY FINDINGS ---
             findings = []
             if not results_df.empty:
-                n_sig = len(sig_df)
+                n_sig = len(sig_df) if sig_df is not None else 0
                 top_word = results_df.iloc[0]["word"]
                 top_ll = results_df.iloc[0]["log_likelihood"]
                 findings.append(f"{n_sig} significant terms (log-likelihood > 25, p_adj < 0.001)")
-                findings.append(f"Top key term: '{top_word}' (LL={top_ll:.1f})")
-                findings.append(f"Target corpus: {len(target_texts)} docs, Reference: {len(ref_texts)} docs")
+                findings.append(f"Top key term: '{top_word}' (LL={top_ll:.1f}, log-ratio={results_df.iloc[0].get('log2fold', 0):.2f})")
+                findings.append(f"Target: {len(target_texts)} docs, Reference: {len(ref_texts)} docs")
+                if not results_df.empty:
+                    top5 = results_df.head(5)
+                    findings.append(f"Top 5: {', '.join(top5['word'].tolist())}")
             else:
                 findings.append("No terms passed frequency threshold — try larger corpus")
-            rb.add_key_findings(findings[:5])
+            rb.add_key_findings(findings[:7])
 
-            # Rationale
-            rb.add_rationale("Comparison", f"Target: {args.target} ({len(target_texts)} docs). Reference: {args.target} ({len(ref_texts)} docs). Min freq: 5.")
+            # --- RATIONALE ---
+            rb.add_rationale("Comparison",
+                f"Target: {args.target} ({len(target_texts)} docs). "
+                f"Reference: {args.target} ({len(ref_texts)} docs). "
+                f"Min unigram freq: 5.")
 
-            # Metrics
+            # --- METRICS ---
             if not results_df.empty:
                 rb.add_metric("Top log-likelihood", results_df.iloc[0]["log_likelihood"],
                               thresholds=THRESHOLDS.get("log_likelihood"))
+                rb.add_metric("Log2 fold-change", results_df.iloc[0].get("log2fold", 0))
 
-            # Table
-            if not sig_df.empty:
-                rb.add_table(sig_df.head(20), title="Top Key Terms",
-                            hover_cols={"log_likelihood": "G² statistic (higher = more distinctive)",
-                                        "log2fold": "Fold change in frequency (base 2)"})
-                rb.set_csv_data(results_df)
+            # --- CHARTS ---
+            if not results_df.empty:
+                # Volcano plot
+                fig = go.Figure()
+                sig = results_df[results_df.get("p_adj", pd.Series([1]*len(results_df))) < 0.001] if "p_adj" in results_df.columns else results_df.head(20)
+                nonsig = results_df[~results_df.index.isin(sig.index)] if not sig.empty else pd.DataFrame()
+                if not nonsig.empty:
+                    fig.add_trace(go.Scatter(x=nonsig["log2fold"], y=-nonsig["log_likelihood"].apply(lambda x: max(x, 0.1)),
+                        mode="markers", name="Not significant",
+                        marker=dict(color="#94a3b8", size=6), text=nonsig["word"]))
+                if not sig.empty:
+                    fig.add_trace(go.Scatter(x=sig["log2fold"], y=-sig["log_likelihood"].apply(lambda x: max(x, 0.1)),
+                        mode="markers", name="Significant",
+                        marker=dict(color="#ef4444", size=8), text=sig["word"]))
+                fig.update_layout(xaxis_title="Log2 fold-change", yaxis_title="-log(LL)",
+                    title="Keyness Volcano Plot")
+                rb.add_chart(fig, title="Keyness Volcano Plot")
 
-            # Build
+            # --- TABLES ---
+            if not results_df.empty and sig_df is not None and not sig_df.empty:
+                display_cols = [c for c in ["word", "f_target", "f_ref", "log_likelihood", "log2fold", "monroe_logodds", "p_adj"] if c in sig_df.columns]
+                rb.add_table(sig_df[display_cols].head(30), title="Significant Key Terms (Top 30)")
+
+            if not results_df.empty:
+                display_cols = [c for c in ["word", "f_target", "f_ref", "log_likelihood", "log2fold", "p_adj"] if c in results_df.columns]
+                rb.add_table(results_df[display_cols].head(50), title="Full Keyness Results (Top 50)")
+
+            if 'bigram_df' in dir() and bigram_df is not None and isinstance(bigram_df, pd.DataFrame) and not bigram_df.empty:
+                rb.add_table(bigram_df.head(20), title="Top 20 Bigram Keyness")
+
+            if 'trigram_df' in dir() and trigram_df is not None and isinstance(trigram_df, pd.DataFrame) and not trigram_df.empty:
+                rb.add_table(trigram_df.head(20), title="Top 20 Trigram Keyness")
+
             rb.build(os.path.join(args.output, "report.html"))
             rb.build_csv(os.path.join(args.output, "raw_output.csv"))
         except Exception as e:
