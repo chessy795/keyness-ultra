@@ -33,6 +33,14 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
+try:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from ultra_shared.schema import build_manifest, new_doc, write_docs_jsonl, write_manifest
+    HAS_SCHEMA = True
+except ImportError:
+    HAS_SCHEMA = False
+
 # ─── Optional imports ─────────────────────────────────────────────────────────
 try:
     import networkx as nx
@@ -753,6 +761,25 @@ def main():
         run_network(target_texts, sig_df, output_dir=args.output)
 
     elapsed = time.time() - t_start
+    if HAS_SCHEMA and not results_df.empty:
+        docs = []
+        for _, row in results_df.iterrows():
+            d = new_doc(str(row["word"]), row["word"])
+            d["word"] = str(row["word"])
+            d["f_target"] = int(row.get("f_target", 0))
+            d["f_ref"] = int(row.get("f_ref", 0))
+            d["log_likelihood"] = float(row.get("log_likelihood", 0))
+            d["log2fold"] = float(row.get("log2fold", 0))
+            d["p_adj"] = float(row.get("p_adj", 1))
+            docs.append(d)
+        write_docs_jsonl(docs, args.output)
+        m = build_manifest(
+            "keyness_ultra", len(target_texts), time.time() - t_start,
+            input_file=args.target,
+            parameters={"ref_text_col": ref_col, "sample": args.sample},
+        )
+        write_manifest(m, args.output)
+
     print(f"\n{'='*60}")
     print(f"COMPLETE ({elapsed:.1f}s)")
     print(f"Output: {args.output}/")
