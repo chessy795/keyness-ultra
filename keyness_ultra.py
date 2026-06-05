@@ -182,6 +182,10 @@ def run_keyness(target_texts, ref_texts, config=CONFIG, output_dir="output"):
             "p_value": p_value,
         })
 
+    if not results:
+        print("  No terms passed frequency threshold — returning empty results")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
     results_df = pd.DataFrame(results).sort_values("log_likelihood", ascending=False)
 
     # BH correction
@@ -202,8 +206,10 @@ def run_keyness(target_texts, ref_texts, config=CONFIG, output_dir="output"):
     os.makedirs(output_dir, exist_ok=True)
     results_df.to_csv(os.path.join(output_dir, "unigram_keyness.csv"), index=False)
     sig_df.to_csv(os.path.join(output_dir, "unigram_keyness_significant.csv"), index=False)
-    bigram_results.to_csv(os.path.join(output_dir, "bigram_keyness.csv"), index=False)
-    trigram_results.to_csv(os.path.join(output_dir, "trigram_keyness.csv"), index=False)
+    if isinstance(bigram_results, pd.DataFrame):
+        bigram_results.to_csv(os.path.join(output_dir, "bigram_keyness.csv"), index=False)
+    if isinstance(trigram_results, pd.DataFrame):
+        trigram_results.to_csv(os.path.join(output_dir, "trigram_keyness.csv"), index=False)
 
     print(f"  {len(results_df)} unigrams tested, {len(sig_df)} significant")
     print(f"  Top 5 target-rich:")
@@ -247,6 +253,8 @@ def _compute_ngram_keyness(target_tokens, ref_tokens, total_t, total_r, n=2):
             "p_value": p_value,
         })
 
+    if not results:
+        return pd.DataFrame()
     df = pd.DataFrame(results).sort_values("log_likelihood", ascending=False)
     return df
 
@@ -260,6 +268,9 @@ def run_collocations(target_texts, config=CONFIG, output_dir="output"):
     print(f"\n{'='*60}")
     print("COLLOCATIONS (PMI, t-score)")
     print(f"{'='*60}")
+    if len(target_texts) < 5:
+        print("  Too few documents for collocation analysis")
+        return
 
     stops = {"the", "and", "for", "are", "but", "not", "you", "all", "can",
              "his", "her", "was", "one", "our", "out", "has", "how", "just",
@@ -296,6 +307,9 @@ def run_collocations(target_texts, config=CONFIG, output_dir="output"):
             "tscore": round(tscore, 3),
         })
 
+    if not results:
+        print("  No collocations found")
+        return
     df = pd.DataFrame(results).sort_values("pmi", ascending=False)
     df = df.head(CONFIG["top_n_output"])
     df.to_csv(os.path.join(output_dir, "collocations.csv"), index=False)
@@ -313,6 +327,9 @@ def run_collocations(target_texts, config=CONFIG, output_dir="output"):
 
 def run_bootstrap(target_texts, ref_texts, sig_df, config=CONFIG, output_dir="output"):
     """Bootstrap confidence intervals for keyness."""
+    if sig_df.empty:
+        print("  No significant terms — skipping bootstrap")
+        return
     print(f"\n{'='*60}")
     print("BOOTSTRAP CONFIDENCE INTERVALS")
     print(f"{'='*60}")
@@ -450,6 +467,9 @@ def run_embeddings(target_texts, sig_df, config=CONFIG, output_dir="output"):
     if not HAS_WORD2VEC:
         print("  Skipping: gensim not available (pip install gensim)")
         return pd.DataFrame()
+    if sig_df.empty:
+        print("  No significant terms — skipping embeddings")
+        return
 
     print(f"\n{'='*60}")
     print("WORD EMBEDDINGS (Word2Vec)")
@@ -540,10 +560,12 @@ def run_embeddings(target_texts, sig_df, config=CONFIG, output_dir="output"):
 
 def run_network(target_texts, sig_df, config=CONFIG, output_dir="output"):
     """Co-occurrence network with community detection."""
-    if not HAS_NETWORKX:
-        print("  Skipping: networkx not available")
+    if len(target_texts) < 5:
+        print("  Too few documents for network analysis")
         return
-
+    if sig_df.empty:
+        print("  No significant terms — skipping network analysis")
+        return
     print(f"\n{'='*60}")
     print("CO-OCCURRENCE NETWORK")
     print(f"{'='*60}")
@@ -609,13 +631,12 @@ def run_network(target_texts, sig_df, config=CONFIG, output_dir="output"):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_volcano(results_df, output_dir="output"):
-    """Volcano plot: log2fold vs log-likelihood."""
-    if not HAS_PLOTLY:
-        print("  Skipping: plotly not available")
+    """Generate volcano plot."""
+    if results_df.empty or len(results_df) < 3:
+        print("  Too few terms for volcano plot")
         return
-
     print(f"\n{'='*60}")
-    print("VOLCANO PLOTS")
+    print("VOLCANO PLOT")
     print(f"{'='*60}")
 
     df = results_df.copy()
