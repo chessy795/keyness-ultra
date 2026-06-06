@@ -851,6 +851,24 @@ def main():
             if 'trigram_df' in dir() and trigram_df is not None and isinstance(trigram_df, pd.DataFrame) and not trigram_df.empty:
                 rb.add_table(trigram_df.head(20), title="Top 20 Trigram Keyness")
 
+            # --- Word frequency comparison chart (target vs reference, top 15) ---
+            if not results_df.empty:
+                top15 = results_df.head(15)
+                fig_freq = go.Figure()
+                fig_freq.add_trace(go.Bar(x=top15["word"], y=top15["f_target"], name="Target", marker_color="#3b82f6"))
+                fig_freq.add_trace(go.Bar(x=top15["word"], y=top15["f_ref"], name="Reference", marker_color="#94a3b8"))
+                fig_freq.update_layout(barmode="group", xaxis_title="Word", yaxis_title="Frequency",
+                    title="Target vs Reference Frequency (Top 15 Key Terms)")
+                rb.add_chart(fig_freq, title="Target vs Reference Frequency")
+
+            # --- Collocations table ---
+            coll_path = os.path.join(args.output, "collocations.csv")
+            if os.path.exists(coll_path):
+                coll_df = pd.read_csv(coll_path)
+                coll_display = [c for c in ["w1", "w2", "frequency", "pmi", "t_score"] if c in coll_df.columns]
+                if coll_display:
+                    rb.add_table(coll_df[coll_display].head(15), title="Top 15 Collocations")
+
             rb.build(os.path.join(args.output, "report.html"))
             rb.build_csv(os.path.join(args.output, "raw_output.csv"))
         except Exception as e:
