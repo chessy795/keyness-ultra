@@ -805,9 +805,11 @@ def main():
             rb.add_key_findings(findings[:7])
 
             # --- RATIONALE ---
+            target_name = Path(args.target).stem if args.target else "target"
+            ref_name = Path(args.reference).stem if hasattr(args, 'reference') and args.reference else "reference"
             rb.add_rationale("Comparison",
-                f"Target: {args.target} ({len(target_texts)} docs). "
-                f"Reference: {args.target} ({len(ref_texts)} docs). "
+                f"Target: {target_name} ({len(target_texts)} docs). "
+                f"Reference: {ref_name} ({len(ref_texts)} docs). "
                 f"Min unigram freq: 5.")
 
             # --- METRICS ---
